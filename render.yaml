@@ -3,7 +3,7 @@ services:
     name: conversor-audio
     runtime: python
     buildCommand: ""
-    startCommand: gunicorn conversor_texto_a_audio:app
+    startCommand: gunicorn conversor_texto_a_audio:aplicacion
     envVars:
       - key: PYTHON_VERSION
         value: 3.12
