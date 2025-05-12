@@ -3,6 +3,6 @@ gTTS
 python-docx
 PyPDF2
 werkzeug
-python-magic-bin ; si estás en Windows.
-python-magic ; si no estás en Windows.
+python-magic-bin
+python-magic
 gunicorn
