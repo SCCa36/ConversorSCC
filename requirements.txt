@@ -3,6 +3,5 @@ gTTS
 python-docx
 PyPDF2
 werkzeug
-python-magic-bin
 python-magic
 gunicorn
