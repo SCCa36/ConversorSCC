@@ -7,6 +7,8 @@ import os
 import magic
 from werkzeug.utils import secure_filename
 from flask import after_this_request
+import subprocess
+import tempfile
 
 #Creamos un directorio temporal donde guardar los archivos MP3.
 os.makedirs('temp', exist_ok=True)
@@ -28,6 +30,20 @@ def esUnArchivoWordValido(archivo):
 		return True
 	except Exception:
 		return False
+#Creamos la función encargada de convertir un archivo .doc a .docx
+def convertirDocADocx(archivo):
+	with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as documento_temporal:
+		documento_temporal.write(archivo.read())
+		documento_temporal.flush()
+		ruta_archivo = documento_temporal.name
+	directorio_salida = tempfile.gettempdir()
+	subprocess.run([
+		'soffice', '--headless', 'convert-to', 'docx',
+		ruta_archivo, '--outdir', directorio_salida
+	], check=True)
+	archivo_docx = os.path.splitext(os.path.basename(ruta_archivo))[0] + '.docx'
+	ruta_archivo_docx = os.path.join(directorio_salida, archivo_docx)
+	return ruta_archivo_docx
 #Creamos la función encargada de convertir el contenido de un archivo de Word a texto.
 def convertirWordATexto(archivo):
 	documento = Document(archivo)
@@ -49,7 +65,7 @@ def index():
 		archivo = request.files['archivo']
 		extension_archivo = archivo.filename.split('.')[-1].lower()
 		#Validamos la extensión.
-		if extension_archivo not in ['docx', 'pdf']:
+		if extension_archivo not in ['doc', 'docx', 'pdf']:
 			flash('Sólo se permiten archivos .docx y .pdf.', "danger")
 			return render_template('index.html')
 		#Validamos el tipo de archivo.
@@ -62,6 +78,15 @@ def index():
 		if extension_archivo == 'docx' and mime_archivo != 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
 			flash("El archivo no es un archivo de Word válido.", "danger")
 			return render_template('index.html')
+		if extension_archivo == 'doc':
+			try:
+				ruta_docx = convertirDocADocx(archivo)
+				with open(ruta_docx, 'rb') as fichero:
+					texto = convertirWordATexto(fichero)
+				os.remove(ruta_docx)
+			except Exception:
+				flash("No se pudo convertir el archivo .doc a .docx.", "danger")
+				return render_template('index.html')
 		#Si el archivo es válido, lo procesamos.
 		if extension_archivo == 'docx' and esUnArchivoWordValido(archivo):
 			texto = convertirWordATexto(archivo)
