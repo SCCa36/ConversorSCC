@@ -1,117 +1,96 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, render_template, request, send_file, flash
-from gtts import gTTS
-from docx import Document
-import PyPDF2
+from flask import Flask, request, render_template, send_file, flash, redirect, url_for
 import os
-import magic
+import time
+import threading
 from werkzeug.utils import secure_filename
-from flask import after_this_request
-import subprocess
-import tempfile
+from docx import Document
+from gtts import gTTS
+import textract
+import fitz
+from werkzeug.exceptions import RequestEntityTooLarge
 
-#Creamos un directorio temporal donde guardar los archivos MP3.
-os.makedirs('temp', exist_ok=True)
-#Creamos una instancia de Flask.
+#Creamos una instancia de Flask
 aplicacion = Flask(__name__)
-#Generamos una clave secreta aleatoria para los mensajes flash.
+#Creamos la clave secreta para la aplicación.
 aplicacion.secret_key = os.urandom(24)
-#Creamos la función encargada de verificar si el archivo es un archivo PDF válido.
-def esUnArchivoPDFValido(archivo):
-	try:
-		lector_pdf = PyPDF2.PdfReader(archivo)
-		return True
-	except Exception:
-		return False
-#Creamos la función encargada de verificar si el archivo es un archivo de Word válido.
-def esUnArchivoWordValido(archivo):
-	try:
-		Document(archivo)
-		return True
-	except Exception:
-		return False
-#Creamos la función encargada de convertir un archivo .doc a .docx
-def convertirDocADocx(archivo):
-	with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as documento_temporal:
-		documento_temporal.write(archivo.read())
-		documento_temporal.flush()
-		ruta_archivo = documento_temporal.name
-	directorio_salida = tempfile.gettempdir()
-	subprocess.run([
-		'soffice', '--headless', 'convert-to', 'docx',
-		ruta_archivo, '--outdir', directorio_salida
-	], check=True)
-	archivo_docx = os.path.splitext(os.path.basename(ruta_archivo))[0] + '.docx'
-	ruta_archivo_docx = os.path.join(directorio_salida, archivo_docx)
-	return ruta_archivo_docx
-#Creamos la función encargada de convertir el contenido de un archivo de Word a texto.
-def convertirWordATexto(archivo):
-	documento = Document(archivo)
-	texto_completo = []
-	for parrafo in documento.paragraphs:
-		texto_completo.append(parrafo.text)
-	return '\n'.join(texto_completo)
-#Creamos la función encargada de convertir el contenido de un archivo PDF a texto.
-def convertirPDFATexto(archivo):
-	lector_pdf = PyPDF2.PdfReader(archivo)
-	texto_completo = []
-	for pagina in lector_pdf.pages:
-		texto_completo.append(pagina.extract_text())
-	return '\n'.join(texto_completo)
-#Creamos la ruta principal de la aplicación.
-@aplicacion.route("/", methods=["GET", "POST"])
+#Indicamos cuál va a ser el directorio donde vamos a guardar los archivos de audio.
+CARPETA_SUBIDAS = 'static/audio'
+#Indicamos el tamaño máximo permitido.
+TAMANO_MAXIMO_PERMITIDO = 20 * 1024 * 1024
+#En caso de que no exista, creamos el directorio donde vamos a guardar los archivos de audio.
+os.makedirs(CARPETA_SUBIDAS, exist_ok=True)
+#Configuramoos el directorio donde vamos a guardar los archivos de audio y el tamaño máximo del archivo.
+aplicacion.config['UPLOAD_FOLDER'] = CARPETA_SUBIDAS
+aplicacion.config['MAX_CONTENT_LENGTH'] = TAMANO_MAXIMO_PERMITIDO
+#Creamos la función encargada de leer los documentos.
+def leerDocumento(ruta_archivo):
+	#Obtenemos la extensión del archivo subido por el usuario.
+	extension = os.path.splitext(ruta_archivo)[1].lower()
+	#En caso de que la extensión sea una de las extensiones permitidas (.doc, .docx y .pdf), extraemos el texto del archivo.
+	if extension == '.docx':
+		documento = Document(ruta_archivo)
+		return '\n'.join([parrafo.text for parrafo in documento.paragraphs])
+	elif extension == '.doc':
+		texto = textract.process(ruta_archivo).decode('utf-8')
+		return texto
+	elif extension == '.pdf':
+		texto = ""
+		with fitz.open(ruta_archivo) as documento:
+			for pagina in documento:
+				texto += pagina.get_text()
+		return texto
+	else:
+		#En caso de que la extensión no sea ninguna de las permitidas, lanzamos un mensaje de error.
+		raise ValueError("\nEl tipo de archivo no es compatible.")
+#Controlamos que el archivo subido por el usuario no sobrepase los 20 MB.
+@aplicacion.errorhandler(RequestEntityTooLarge)
+def archivoDemasiadoLargo():
+	flash("El archivo excede el tamaño máximo permitido (20 MB).", "danger")
+	return redirect('/')
+#Creamos la función encargada de eliminar los archivos una vez haya pasado una hora.
+def eliminarArchivosAntiguos(directorio, tiempo_maximo=3600):
+	while True:
+		ahora = time.time()
+		for archivo in os.listdir(directorio):
+			ruta = os.path.join(directorio, archivo)
+			if os.path.isfile(ruta):
+				#Si ha pasado una hora, eliminamos los archivos.
+				if ahora - os.path.getmtime(ruta) > tiempo_maximo:
+					os.remove(ruta)
+		#Hacemos que el proceso se repita cada 10 minutos.
+		time.sleep(600)
+#Lanzamos el hilo encargado de eliminar todos los archivos en segundo plano.
+threading.Thread(target=eliminarArchivosAntiguos, args=(CARPETA_SUBIDAS,), daemon=True).start()
+#Creamos la única ruta de la aplicación.
+@aplicacion.route('/', methods=['GET', 'POST'])
 def index():
 	if request.method == 'POST':
+		if 'archivo' not in request.files:
+			flash("No se ha enviado ningún archivo.", "danger")
+			return redirect(request.url)
 		archivo = request.files['archivo']
-		extension_archivo = archivo.filename.split('.')[-1].lower()
-		#Validamos la extensión.
-		if extension_archivo not in ['doc', 'docx', 'pdf']:
-			flash('Sólo se permiten archivos .docx y .pdf.', "danger")
-			return render_template('index.html')
-		#Validamos el tipo de archivo.
-		mime = magic.Magic(mime=True)
-		mime_archivo = mime.from_buffer(archivo.read(1024))
-		archivo.seek(0)
-		if extension_archivo == 'pdf' and mime_archivo != 'application/pdf':
-			flash("El archivo no es un archivo PDF válido.", "danger")
-			return render_template('index.html')
-		if extension_archivo == 'docx' and mime_archivo != 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-			flash("El archivo no es un archivo de Word válido.", "danger")
-			return render_template('index.html')
-		if extension_archivo == 'doc':
+		if archivo and archivo.filename.lower().emdswith(('.doc', '.docx', '.pdf')):
+			nombre_archivo = secure_filename(archivo.filename)
+			ruta = os.path.join(CARPETA_SUBIDAS, nombre_archivo)
+			archivo.save(ruta)
 			try:
-				ruta_docx = convertirDocADocx(archivo)
-				with open(ruta_docx, 'rb') as fichero:
-					texto = convertirWordATexto(fichero)
-				os.remove(ruta_docx)
-			except Exception:
-				flash("No se pudo convertir el archivo .doc a .docx.", "danger")
-				return render_template('index.html')
-		#Si el archivo es válido, lo procesamos.
-		if extension_archivo == 'docx' and esUnArchivoWordValido(archivo):
-			texto = convertirWordATexto(archivo)
-		elif extension_archivo == 'pdf' and esUnArchivoPDFValido(archivo):
-			texto = convertirPDFATexto(archivo)
+				texto = leerDocumento(ruta)
+				if not texto.strip():
+					flash("El documento está vacío.", "warning")
+					return redirect('/')
+				tts = gTTS(text=texto, lang='es')
+				nombre_archivo_audio = nombre_archivo.rsplit('.', 1)[0] + '.mp3'
+				ruta_archivo_audio = os.path.join(CARPETA_SUBIDAS, nombre_archivo_audio)
+				tts.save(ruta_archivo_audio)
+				return render_template('index.html', archivo_audio=nombre_archivo_audio)
+			except Exception as e:
+				flash(f"Ocurrió un error: {str(e)}.", "danger")
+				return redirect('/')
 		else:
-			flash("El archivo está dañado o no es compatible.", "danger")
-			return render_template('index.html')
-		#Convertimos el texto a MP3.
-		conversor = gTTS(texto, lang='es')
-		nombre_original = os.path.splitext(secure_filename(archivo.filename))[0]
-		nombre_archivo_MP3 = f'{nombre_original}.mp3'
-		ruta_MP3 = os.path.join('temp', nombre_archivo_MP3)
-		conversor.save(ruta_MP3)
-		#Eliminamos el archivo MP3 después de que el usuario lo descargue.
-		@after_this_request
-		def eliminar_archivo(respuesta):
-		    try:
-		        os.remove(ruta_MP3)
-		    except Exception as e:
-		        print(f"Error al eliminar el archivo: {e}")
-		    return respuesta
-		return send_file(ruta_MP3, as_attachment=True)
-	#Si el usuario es la primera vez que accede a la aplicación mostramos la página principal.
-	return render_template('index.html')
+			flash("Sólo se permiten archivos de Word (.doc y .docx) y PDF (.pdf).", "danger")
+			return redirect('/')
+	return render_template('index.html', archivo_audio=None)
 #Ejecutamos la aplicación de Flask.
 if __name__ == "__main__":
 	aplicacion.run(debug=True)

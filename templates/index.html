@@ -13,20 +13,28 @@
 			<h1 class = "mt-5">Conversor de archivos a MP3</h1>
 			{% with messages = get_flashed_messages(with_categories=true) %}
 				{% if messages %}
-					<div class = "alert alert-danger" role = "danger">
-						{% for category, message in messages %}
-							<p>{{ message }}</p>
-						{% endfor %}
-					</div>
+					{% for category, message in messages %}
+						<div class = "alert alert-{{ category }}">{{ message }}</div>
+					{% endfor %}
 				{% endif %}
 			{% endwith %}
 			<form action = "/" method = "POST" enctype = "multipart/form-data">
 				<div class = "mb-3">
 					<label for = "archivo" class = "form-label">Selecciona un archivo (Word o PDF)</label>
-					<input type = "file" class = "form-control" id = "archivo" name = "archivo" required>
+					<input type = "file" class = "form-control" id = "archivo" name = "archivo" accept = ".doc,.docx,.pdf" required>
 				</div>
 				<button type = "submit" class = "btn btn-primary">Convertir a MP3</button>
 			</form>
+			{% if archivo_audio %}
+				<div class = "mt-4">
+					<h5>Resultado:</h5>
+					<audio controls class = "w-100">
+						<source src = "{{ url_for('static', filename='audio/' + archivo_audio) }}" type = "audio/mpg" />
+						Tu navegador no soporta el elemento de audio.
+					</audio>
+					<p><a class = "text-info" href = "{{ url_for('static', filename='audio/' + archivo_audio) }}" download>Descargar MP3</a></p>
+				</div>
+			{%endif}
 			<button id = "btnModoNoche" class = "btn btn-secondary mt-4">Modo Noche</button>
 		</div>
 		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

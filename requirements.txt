@@ -4,6 +4,10 @@ python-docx
 PyPDF2
 werkzeug
 python-magic
+<<<<<<< HEAD
 subprocess
 tempfile
 gunicorn
+=======
+gunicorn
+>>>>>>> 00a3444f353efb1bc7da62c94cb0821766d42480
