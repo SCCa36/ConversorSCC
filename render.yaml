@@ -3,7 +3,7 @@ services:
     name: conversor-doc-audio
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn conversor_texto_a_audio:aplicacion
     envVars:
       - key: PYTHON_VERSION
         value: 3.12
