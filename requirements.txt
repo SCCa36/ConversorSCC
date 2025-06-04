@@ -1,13 +1,6 @@
 Flask
 gTTS
 python-docx
-PyPDF2
-werkzeug
-python-magic
-<<<<<<< HEAD
-subprocess
-tempfile
+textract
+PyMuPDF
 gunicorn
-=======
-gunicorn
->>>>>>> 00a3444f353efb1bc7da62c94cb0821766d42480
