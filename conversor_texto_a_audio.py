@@ -74,7 +74,7 @@ def index():
 			flash("No se ha enviado ningún archivo.", "danger")
 			return redirect(request.url)
 		archivo = request.files['archivo']
-		if archivo and archivo.filename.lower().emdswith(('.doc', '.docx', '.pdf')):
+		if archivo and archivo.filename.lower().endswith(('.doc', '.docx', '.pdf')):
 			nombre_archivo = secure_filename(archivo.filename)
 			ruta = os.path.join(CARPETA_SUBIDAS, nombre_archivo)
 			archivo.save(ruta)
