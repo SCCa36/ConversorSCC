@@ -9,6 +9,7 @@ from gtts import gTTS
 import textract
 import fitz
 from werkzeug.exceptions import RequestEntityTooLarge
+from pydub import AudioSegment
 
 #Creamos una instancia de Flask
 aplicacion = Flask(__name__)
@@ -48,6 +49,9 @@ def leerDocumento(ruta_archivo):
 def archivoDemasiadoLargo():
 	flash("El archivo excede el tamaño máximo permitido (20 MB).", "danger")
 	return redirect('/')
+#Creamos la función encargada de dividir un texto muy grande en partes más pequeñas.
+def dividirTexto(texto, maximo_caracteres=2000):
+	return [texto[i:i + maximo_caracteres] for i in range(0, len(texto), maximo_caracteres)]
 #Creamos la función encargada de eliminar los archivos una vez haya pasado una hora.
 def eliminarArchivosAntiguos(directorio, tiempo_maximo=3600):
 	while True:
@@ -79,10 +83,27 @@ def index():
 				if not texto.strip():
 					flash("El documento está vacío.", "warning")
 					return redirect('/')
-				tts = gTTS(text=texto, lang='es')
-				nombre_archivo_audio = nombre_archivo.rsplit('.', 1)[0] + '.mp3'
-				ruta_archivo_audio = os.path.join(CARPETA_SUBIDAS, nombre_archivo_audio)
-				tts.save(ruta_archivo_audio)
+				#Dividimos el texto en fragmentos.
+				fragmentos = dividirTexto(texto)
+				#Creamos una lista para almacenar todos los fragmentos del texto convertidos a MP3.
+				archivos_audio = []
+				#Creamos un archivo MP3 por cada fragmento.
+				for i, fragmento in enumerate(fragmentos):
+					tts = gTTS(text=texto, lang='es')
+					nombre_archivo_audio = f'{nombre_archivo.rsplit('.', 1)[0]}_parte{i + 1}.mp3'
+					ruta_archivo_audio = os.path.join(CARPETA_SUBIDAS, nombre_archivo_audio)
+					tts.save(ruta_archivo_audio)
+					archivos_audio.append(ruta_archivo_audio)
+				#Unimos todos los archivos MP3 generados.
+				audio_final = AudioSegment.empty()
+				for archivo in archivos_audio:
+					audio_final += AudioSegment.from_mp3(archivo)
+				#Guardamos el archivo MP3 final.
+				ruta_audio_final = os.path.join(CARPETA_SUBIDAS, f"{nombre_archivo.rsplit('.', 1)[0]}.mp3")
+				audio_final.export(ruta_audio_final, format="mp3")
+				#Eliminamos los fragmentos intermedios.
+				for archivo in archivos_audio:
+					os.remove(archivo)
 				return render_template('index.html', archivo_audio=nombre_archivo_audio)
 			except Exception as e:
 				flash(f"Ocurrió un error: {str(e)}.", "danger")

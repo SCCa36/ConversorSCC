@@ -3,4 +3,5 @@ gTTS
 python-docx
 textract
 PyMuPDF
+pydub
 gunicorn
