@@ -90,7 +90,7 @@ def index():
 				#Creamos un archivo MP3 por cada fragmento.
 				for i, fragmento in enumerate(fragmentos):
 					tts = gTTS(text=texto, lang='es')
-					nombre_archivo_audio = f'{nombre_archivo.rsplit('.', 1)[0]}_parte{i + 1}.mp3'
+					nombre_archivo_audio = f"{nombre_archivo.rsplit('.', 1)[0]}_parte{i + 1}.mp3"
 					ruta_archivo_audio = os.path.join(CARPETA_SUBIDAS, nombre_archivo_audio)
 					tts.save(ruta_archivo_audio)
 					archivos_audio.append(ruta_archivo_audio)
